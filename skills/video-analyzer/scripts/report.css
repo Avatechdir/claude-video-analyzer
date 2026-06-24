@@ -18,10 +18,10 @@ li { margin: 3px 0; }
 .cover p { font-size: 13pt; color: #555; margin: 8px 0; }
 .cover .meta { font-size: 11pt; color: #888; margin-top: 30px; }
 
-/* Скриншоты (pandoc implicit figures) */
-figure { margin: 14px 0; page-break-inside: avoid; text-align: center; }
-img { max-width: 100%; border: 1px solid #cfd8d3; border-radius: 6px; }
-figcaption { font-size: 10pt; color: #46524b; margin-top: 5px; text-align: left; }
+/* Скриншоты (pandoc implicit figures) — встроены рядом с выводом, не во всю ширину */
+figure { margin: 12px 0 14px; page-break-inside: avoid; text-align: center; }
+img { max-width: 84%; border: 1px solid #cfd8d3; border-radius: 6px; }
+figcaption { font-size: 9.5pt; color: #46524b; margin: 5px auto 0; max-width: 84%; text-align: left; font-style: italic; }
 
 /* Честная плашка про диаризацию / как читать */
 .notebox { background: #fff7e6; border: 1px solid #f0c860; border-radius: 8px; padding: 10px 14px; font-size: 10pt; color: #5a4a1a; margin: 14px 0; }
