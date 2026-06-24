@@ -1,6 +1,6 @@
 {
   "name": "video-analyzer",
-  "description": "Analyze videos locally — client calls (transcript + speaker diarization → product summary) and tool/competitor demos (scene-frame visual analysis). Accepts local files or YouTube links. Uses ffmpeg + faster-whisper + pyannote; no cloud, no paid APIs.",
+  "description": "Analyzes videos locally — client calls (transcript + speaker diarization → product summary) and tool/competitor demos (scene-frame visual analysis), producing a PDF report by default. Accepts local files or YouTube links. Uses ffmpeg + faster-whisper + pyannote; no cloud, no paid APIs.",
   "version": "0.1.0",
   "author": {
     "name": "Avatechdir"

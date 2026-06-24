@@ -1,15 +1,13 @@
 ---
 name: video-analyzer
-description: Analyze a video file or YouTube link by extracting scene frames and transcribing speech (locally, free), then produce a shareable PDF report by default — plain-language conclusions, screenshots placed next to the conclusion each supports, and (for calls) a role-attributed transcript. Use when the user says "посмотри видео", "проанализируй запись/созвон", "что на этом видео", "разбери этот инструмент/конкурента", "сделай PDF/отчёт по видео/созвону", or provides a path to a video file or a YouTube URL. Handles client calls (transcript + speaker diarization → product summary) and product/competitor demos (visual frame analysis). Output: chat summary + a PDF report assembled via pandoc + weasyprint.
+description: Analyzes a video file or YouTube link by extracting scene frames and transcribing speech (locally, free), then produces a shareable PDF report by default — plain-language conclusions, screenshots placed next to the conclusion each supports, and (for calls) a role-attributed transcript. Use when the user says "посмотри видео", "проанализируй запись/созвон", "что на этом видео", "разбери этот инструмент/конкурента", "сделай PDF/отчёт по видео/созвону", or provides a path to a video file or a YouTube URL. Handles client calls (transcript + speaker diarization → product summary) and product/competitor demos (visual frame analysis). Outputs a chat summary plus a PDF report assembled via pandoc + weasyprint.
 ---
 
 **IMPORTANT — Path Resolution:**
-This skill may live in different locations. Determine the skill directory from where you loaded this SKILL.md and use it as `$SKILL_DIR` in all commands below.
-
-Common paths:
-- Manual global: `~/.claude/skills/video-analyzer`
-- Project source: `/Users/admin/ClaudeProjects/VideoAnalyze/video-analyzer`
-- Plugin: `~/.claude/plugins/.../skills/video-analyzer`
+This skill may live in different locations (manual global install, plugin cache, or a
+checked-out repo). Determine the skill directory from where you loaded this SKILL.md and use
+it as `$SKILL_DIR` in all commands below — do not hardcode an absolute path. Typically it is
+`~/.claude/skills/video-analyzer` or a `.../plugins/.../skills/video-analyzer` path.
 
 # Video Analyzer
 
