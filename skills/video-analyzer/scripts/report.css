@@ -1,0 +1,41 @@
+/* report.css — печать PDF-отчёта по созвону (pandoc HTML → weasyprint).
+   Простой, чистый стиль: обложка, понятные выводы, скрины, диалог по ролям. */
+@page { size: A4; margin: 16mm 14mm; }
+body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11.5pt; line-height: 1.55; color: #1d1d1f; }
+
+h1 { font-size: 18pt; color: #0f7a40; border-bottom: 3px solid #18a558; padding-bottom: 6px; margin: 0 0 8px; page-break-before: always; page-break-after: avoid; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { font-size: 14pt; color: #0f7a40; margin: 20px 0 6px; page-break-after: avoid; }
+h3 { font-size: 12pt; margin: 14px 0 4px; page-break-after: avoid; }
+p { margin: 7px 0; }
+b, strong { color: #0b5e30; }
+ul { margin: 6px 0 6px 2px; padding-left: 20px; }
+li { margin: 3px 0; }
+
+/* Обложка */
+.cover { page-break-after: always; padding-top: 50mm; text-align: center; }
+.cover h1 { border: none; page-break-before: avoid; font-size: 27pt; font-weight: 800; color: #0f7a40; }
+.cover p { font-size: 13pt; color: #555; margin: 8px 0; }
+.cover .meta { font-size: 11pt; color: #888; margin-top: 30px; }
+
+/* Скриншоты (pandoc implicit figures) */
+figure { margin: 14px 0; page-break-inside: avoid; text-align: center; }
+img { max-width: 100%; border: 1px solid #cfd8d3; border-radius: 6px; }
+figcaption { font-size: 10pt; color: #46524b; margin-top: 5px; text-align: left; }
+
+/* Честная плашка про диаризацию / как читать */
+.notebox { background: #fff7e6; border: 1px solid #f0c860; border-radius: 8px; padding: 10px 14px; font-size: 10pt; color: #5a4a1a; margin: 14px 0; }
+.legend { font-size: 10.5pt; color: #444; margin: 8px 0 14px; }
+
+/* Диалог по ролям — таблица «Кто | Реплика» без рамок */
+.dialogue table { border-collapse: collapse; width: 100%; }
+.dialogue thead { display: none; }                 /* прячем заголовок Кто|Реплика */
+.dialogue td { border: none; padding: 7px 12px 7px 0; vertical-align: top; }
+.dialogue tr { page-break-inside: avoid; }
+.dialogue td:first-child { width: 104px; }
+/* цветные плашки имён: пиши в markdown как [Имя]{.p}/{.v}/{.k} */
+.p, .v, .k { display: inline-block; min-width: 88px; box-sizing: border-box; text-align: center;
+             font-weight: 700; font-size: 9.5pt; padding: 3px 6px; border-radius: 5px; white-space: nowrap; }
+.p { background: #eafaf0; color: #137a45; }         /* удалённый/ведущий экран */
+.v { background: #e3f0ff; color: #1a4f8a; }         /* основной собеседник */
+.k { background: #f0ecf7; color: #5a3d8a; }         /* прочие/коллеги */
