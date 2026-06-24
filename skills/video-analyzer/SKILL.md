@@ -1,6 +1,6 @@
 ---
 name: video-analyzer
-description: Analyze a video file or YouTube link by extracting scene frames and transcribing speech (locally, free). Use when the user says "посмотри видео", "проанализируй запись/созвон", "что на этом видео", "разбери этот инструмент/конкурента", or provides a path to a video file or a YouTube URL. Handles client calls (transcript + speaker diarization → product summary) and product/competitor demos (visual frame analysis).
+description: Analyze a video file or YouTube link by extracting scene frames and transcribing speech (locally, free), then produce a shareable PDF report by default — plain-language conclusions, screenshots placed next to the conclusion each supports, and (for calls) a role-attributed transcript. Use when the user says "посмотри видео", "проанализируй запись/созвон", "что на этом видео", "разбери этот инструмент/конкурента", "сделай PDF/отчёт по видео/созвону", or provides a path to a video file or a YouTube URL. Handles client calls (transcript + speaker diarization → product summary) and product/competitor demos (visual frame analysis). Output: chat summary + a PDF report assembled via pandoc + weasyprint.
 ---
 
 **IMPORTANT — Path Resolution:**
