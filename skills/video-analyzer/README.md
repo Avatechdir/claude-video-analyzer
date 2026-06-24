@@ -9,14 +9,17 @@
 - Извлекает **кадры по смене сцены** (ffmpeg) — ловит переключения UI на демо/шаринге экрана.
 - Транскрибирует речь через **WhisperX** с опциональной **диаризацией** (метки говорящих).
 - Адаптирует анализ под жанр: продуктовое саммари созвона **или** визуальный разбор инструмента.
+- Собирает **PDF-отчёт** (`scripts/make_report.sh`): выводы простым языком + скриншоты рядом с
+  выводами + для созвона — расшифровка по ролям. Сборка через **pandoc → weasyprint**.
 
 ## Установка
 ```bash
 bash scripts/setup.sh
 ```
-Поставит `ffmpeg` + `yt-dlp` (Homebrew) и `whisperx` (в `.venv`), затем спросит токен HuggingFace
-для диаризации (бесплатный; нужно один раз принять условия моделей `pyannote/speaker-diarization-3.1`
-и `pyannote/segmentation-3.0`). Без токена скилл работает, но без меток говорящих.
+Поставит `ffmpeg` + `yt-dlp` + `pandoc` + `weasyprint` (Homebrew) и `whisperx` (в `.venv`), затем
+спросит токен HuggingFace для диаризации (бесплатный; нужно один раз принять условия моделей
+`pyannote/speaker-diarization-3.1` и `pyannote/segmentation-3.0`). Без токена скилл работает, но
+без меток говорящих. `pandoc`/`weasyprint` нужны только для сборки PDF.
 
 Затем установи как глобальный скилл (копия в `~/.claude/skills/`):
 ```bash
@@ -32,10 +35,13 @@ cp -R . ~/.claude/skills/video-analyzer
 video-analyzer/
 ├── SKILL.md            # инструкция и workflow для Claude
 ├── scripts/
-│   ├── setup.sh        # установка зависимостей (разово)
-│   ├── ingest.sh       # YouTube/файл → локальный mp4
-│   ├── extract.sh      # кадры по сцене + audio.wav
-│   └── transcribe.sh   # WhisperX (+ диаризация)
+│   ├── setup.sh          # установка зависимостей (разово): ffmpeg/yt-dlp/pandoc/weasyprint/whisperx
+│   ├── ingest.sh         # YouTube/файл → локальный mp4
+│   ├── extract.sh        # кадры (сцена + добор по плотности/разрывам) + audio.wav
+│   ├── transcribe.sh     # WhisperX (+ диаризация)
+│   ├── srt_to_dialogue.py # черновик диалога по ролям из размеченного SRT
+│   ├── make_report.sh    # markdown → PDF (pandoc + weasyprint)
+│   └── report.css        # стиль PDF-отчёта
 └── README.md
 ```
 

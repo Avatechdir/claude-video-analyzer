@@ -16,7 +16,9 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-for pkg in ffmpeg yt-dlp; do
+# ffmpeg/yt-dlp — извлечение кадров/аудио и скачивание YouTube;
+# pandoc + weasyprint — сборка PDF-отчёта по созвону/демо (scripts/make_report.sh).
+for pkg in ffmpeg yt-dlp pandoc weasyprint; do
   if command -v "$pkg" >/dev/null 2>&1; then
     echo "    [ok] $pkg уже установлен"
   else

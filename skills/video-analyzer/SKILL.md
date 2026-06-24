@@ -260,7 +260,7 @@ rm -rf "$WORK"
   созвона (Pachka/Zoom) идёт отдельным каналом и отделяется лучше. Поэтому метки `SPEAKER_xx` почти
   всегда надо сводить к реальным людям вручную — по смыслу и роду глаголов (см. «Честность по
   говорящим»). `scripts/srt_to_dialogue.py` даёт черновик (склеивает реплики одного спикера).
-- **PDF-отчёт собирается через pandoc + weasyprint** (brew, уже стоят). Скрипт
+- **PDF-отчёт собирается через pandoc + weasyprint** (brew; ставятся `scripts/setup.sh`). Скрипт
   `scripts/make_report.sh` делает markdown → автономный HTML (`--embed-resources` вшивает картинки
   base64) → PDF. Стили — `scripts/report.css`. weasyprint шумит warning'ами про `box-shadow`/`@media`
   — безобидно. Проверка: `mdls -name kMDItemNumberOfPages -raw OUT.pdf`.
