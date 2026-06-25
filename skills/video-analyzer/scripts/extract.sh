@@ -85,14 +85,35 @@ extract_at() {
   expr="$(awk -v e="$eps" '{lo=$1-e; if(lo<0)lo=0; if(NR>1)printf "+"; printf "between(t,%.3f,%.3f)", lo, $1+e}' "$plan")"
   [ -z "$expr" ] && { : > "$FRAMES/timestamps.txt"; return; }
   # select по времени; запятые внутри between() требуют одинарных кавычек в фильтрографе.
+  # Окно between() шириной ~кадр может поймать 2–3 СОСЕДНИХ кадра на одну цель (особенно на
+  # 60fps). Поэтому даём запас по лимиту (×3), а дубли убираем дедупом ниже — иначе -frames:v
+  # исчерпался бы дублями в начале и хвост видео остался бы без кадров.
   ffmpeg -y ${SEEK_ARGS[@]+"${SEEK_ARGS[@]}"} -i "$VIDEO" \
     -vf "select='${expr}',showinfo,scale='min(1280,iw)':-2" \
-    -vsync vfr -frames:v "$MAX_FRAMES" -q:v 3 \
+    -vsync vfr -frames:v "$(( MAX_FRAMES * 3 + 10 ))" -q:v 3 \
     "$FRAMES/frame_%04d.jpg" 2>"$log" || true
-  # pts_time идёт от нуля окна (вход. seek сбрасывает таймштампы) → прибавляем OFFSET.
-  grep -oE 'pts_time:[0-9.]+' "$log" 2>/dev/null | sed 's/pts_time://' \
-    | awk -v off="$OFFSET" '{printf "%.3f\n", $1+off}' > "$FRAMES/timestamps.txt" || true
+  # Сырые таймкоды окна (относительные), по строке на кадр в порядке вывода (= frame_0001..).
+  grep -oE 'pts_time:[0-9.]+' "$log" 2>/dev/null | sed 's/pts_time://' > "$FRAMES/_rawpts.txt" || true
   rm -f "$log"
+  # Дедуп соседних дублей: оставляем кадр, если он дальше DEDUP_GAP от прошлого оставленного.
+  # На выходе _keep.txt: "исходный_номер_кадра  абсолютный_таймкод".
+  local dedup="${DEDUP_GAP:-0.5}"
+  awk -v g="$dedup" -v off="$OFFSET" 'BEGIN{last=-1e9}
+    { if($1-last>=g){last=$1; printf "%d %.3f\n", NR, $1+off} }' "$FRAMES/_rawpts.txt" > "$FRAMES/_keep.txt" || true
+  # Переносим оставленные кадры в непрерывную нумерацию и пишем timestamps.txt.
+  : > "$FRAMES/timestamps.txt"
+  local i=0 idx pts src dst
+  while read -r idx pts; do
+    [ -n "$idx" ] || continue
+    i=$(( i + 1 ))
+    src="$(printf '%s/frame_%04d.jpg' "$FRAMES" "$idx")"
+    dst="$(printf '%s/kept_%04d.jpg' "$FRAMES" "$i")"
+    mv -f "$src" "$dst" 2>/dev/null || true
+    printf '%s\n' "$pts" >> "$FRAMES/timestamps.txt"
+  done < "$FRAMES/_keep.txt"
+  rm -f "$FRAMES"/frame_*.jpg
+  for f in "$FRAMES"/kept_*.jpg; do [ -e "$f" ] || continue; mv -f "$f" "${f/kept_/frame_}"; done
+  rm -f "$FRAMES/_rawpts.txt" "$FRAMES/_keep.txt"
 }
 
 # Равномерный запасной план (длительность неизвестна или анализ ничего не дал).
