@@ -13,6 +13,8 @@
 #
 # Env (опц.): MAX_FRAMES (80), ANALYZE_THRESH (0.1), MAX_GAP_SEC (45), INFILL_STEP (30),
 #   SILENCE_NOISE (-30dB), SILENCE_MIN (2), SPEECH_RATIO (0.3), MIN_GAP (1.5)
+#   FRAME_FORMAT (jpg|png, по умолч. jpg): png — без потерь, для демо/слайдов с мелким
+#     текстом UI; jpg — компактно, для «говорящих голов».
 #   Фокус-режим: FOCUS_START / FOCUS_END (SS | MM:SS | HH:MM:SS) — разбирать только отрезок.
 #   Кадры и аудио режутся по окну (плотность считается от длины окна), таймкоды АБСОЛЮТНЫЕ.
 set -euo pipefail
@@ -28,6 +30,17 @@ SILENCE_NOISE="${SILENCE_NOISE:--30dB}"  # порог тишины для silenc
 SILENCE_MIN="${SILENCE_MIN:-2}"          # мин. длительность тишины (сек)
 SPEECH_RATIO="${SPEECH_RATIO:-0.3}"      # дыра = «тишина+статика», если речи меньше этой доли
 MIN_GAP="${MIN_GAP:-1.5}"                # кадры ближе этого по времени считаем дублем
+
+# Формат кадров. jpg (по умолчанию) — компактно, годится для «говорящих голов». png —
+# БЕЗ ПОТЕРЬ: для демо/скринкастов/слайдов, где важно читать мелкий текст UI (jpeg его «мылит»).
+# Для UI-скриншотов с плоскими цветами png часто даже компактнее jpeg. (webp не поддержан:
+# libwebp есть не во всех сборках ffmpeg, а weasyprint/Read его не везде вшивают — png надёжнее.)
+FRAME_FORMAT="${FRAME_FORMAT:-jpg}"
+case "$FRAME_FORMAT" in
+  jpg|jpeg) EXT="jpg"; ENC_ARGS=(-q:v 3) ;;
+  png)      EXT="png"; ENC_ARGS=(-pred mixed) ;;           # png без потерь (фильтр предсказания)
+  *) echo "ОШИБКА: FRAME_FORMAT должен быть jpg или png (дано: $FRAME_FORMAT)" >&2; exit 1 ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMES="$WORK/frames"
@@ -90,8 +103,8 @@ extract_at() {
   # исчерпался бы дублями в начале и хвост видео остался бы без кадров.
   ffmpeg -y ${SEEK_ARGS[@]+"${SEEK_ARGS[@]}"} -i "$VIDEO" \
     -vf "select='${expr}',showinfo,scale='min(1280,iw)':-2" \
-    -vsync vfr -frames:v "$(( MAX_FRAMES * 3 + 10 ))" -q:v 3 \
-    "$FRAMES/frame_%04d.jpg" 2>"$log" || true
+    -vsync vfr -frames:v "$(( MAX_FRAMES * 3 + 10 ))" ${ENC_ARGS[@]+"${ENC_ARGS[@]}"} \
+    "$FRAMES/frame_%04d.$EXT" 2>"$log" || true
   # Сырые таймкоды окна (относительные), по строке на кадр в порядке вывода (= frame_0001..).
   grep -oE 'pts_time:[0-9.]+' "$log" 2>/dev/null | sed 's/pts_time://' > "$FRAMES/_rawpts.txt" || true
   rm -f "$log"
@@ -106,13 +119,13 @@ extract_at() {
   while read -r idx pts; do
     [ -n "$idx" ] || continue
     i=$(( i + 1 ))
-    src="$(printf '%s/frame_%04d.jpg' "$FRAMES" "$idx")"
-    dst="$(printf '%s/kept_%04d.jpg' "$FRAMES" "$i")"
+    src="$(printf '%s/frame_%04d.%s' "$FRAMES" "$idx" "$EXT")"
+    dst="$(printf '%s/kept_%04d.%s' "$FRAMES" "$i" "$EXT")"
     mv -f "$src" "$dst" 2>/dev/null || true
     printf '%s\n' "$pts" >> "$FRAMES/timestamps.txt"
   done < "$FRAMES/_keep.txt"
-  rm -f "$FRAMES"/frame_*.jpg
-  for f in "$FRAMES"/kept_*.jpg; do [ -e "$f" ] || continue; mv -f "$f" "${f/kept_/frame_}"; done
+  rm -f "$FRAMES"/frame_*."$EXT"
+  for f in "$FRAMES"/kept_*."$EXT"; do [ -e "$f" ] || continue; mv -f "$f" "${f/kept_/frame_}"; done
   rm -f "$FRAMES/_rawpts.txt" "$FRAMES/_keep.txt"
 }
 
@@ -160,17 +173,17 @@ fi
 
 # Извлечение по плану.
 extract_at "$PLAN"
-count="$(find "$FRAMES" -name 'frame_*.jpg' | wc -l | tr -d ' ')"
+count="$(find "$FRAMES" -name "frame_*.$EXT" | wc -l | tr -d ' ')"
 
 # Подстраховка: план/извлечение ничего не дали — равномерная выборка.
 if [ "$count" -lt "$MIN_FRAMES" ]; then
   echo "[extract] кадров мало ($count) — равномерная подстраховка" >&2
-  rm -f "$FRAMES"/frame_*.jpg
+  rm -f "$FRAMES"/frame_*."$EXT"
   N=$(( DUR / 10 )); [ "$N" -lt "$MIN_FRAMES" ] && N=$MIN_FRAMES
   [ "$N" -gt "$MAX_FRAMES" ] && N=$MAX_FRAMES
   uniform_plan "$N" "$PLAN"
   extract_at "$PLAN"
-  count="$(find "$FRAMES" -name 'frame_*.jpg' | wc -l | tr -d ' ')"
+  count="$(find "$FRAMES" -name "frame_*.$EXT" | wc -l | tr -d ' ')"
 fi
 
 # Сводка структуры для модели (жанр, подсказки по фокусу) и очистка временных файлов.
@@ -181,8 +194,9 @@ fi
   echo "silence_intervals=$n_sil"
   echo "planned_frames=$n_plan"
   echo "extracted_frames=$count"
+  echo "frame_format=$EXT"
 } > "$WORK/analysis.txt"
 rm -f "$SCENES" "$SIL" "$PLAN" "$WORK/_scenelog" "$WORK/_sillog"
 
-echo "[extract] готово: кадров=$count, аудио=$WORK/audio.wav, анализ=$WORK/analysis.txt" >&2
+echo "[extract] готово: кадров=$count ($EXT), аудио=$WORK/audio.wav, анализ=$WORK/analysis.txt" >&2
 printf '%s\n' "$count"
