@@ -31,6 +31,16 @@ export KMP_DUPLICATE_LIB_OK=TRUE
 
 ARGS=(--audio "$AUDIO" --out "$WORK" --model "$MODEL" --language "$LANG" --threads "$THREADS")
 
+# Фокус-режим: extract.sh пишет $WORK/focus_offset (старт окна в сек). Аудио урезано
+# по окну, поэтому таймкоды whisper идут от нуля — сдвигаем их в абсолютное время видео.
+if [ -f "$WORK/focus_offset" ]; then
+  OFFSET="$(cat "$WORK/focus_offset")"
+  if [ -n "$OFFSET" ] && [ "$OFFSET" != "0" ]; then
+    echo "[transcribe] фокус-режим: сдвиг таймкодов на +${OFFSET}с (абсолютное время)" >&2
+    ARGS+=(--time-offset "$OFFSET")
+  fi
+fi
+
 if [ "$MODE" = "diarize" ]; then
   if [ -f "$TOKEN_FILE" ] && [ -s "$TOKEN_FILE" ]; then
     echo "[transcribe] режим: диаризация (метки говорящих)" >&2

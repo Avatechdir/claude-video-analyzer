@@ -118,6 +118,8 @@ def main():
     ap.add_argument("--language", default="ru")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--hf-token", default="")
+    ap.add_argument("--time-offset", type=float, default=0.0,
+                    help="прибавить к таймкодам (фокус-режим: старт окна в сек)")
     args = ap.parse_args()
 
     print(f"[py] транскрипция (faster-whisper {args.model})...", file=sys.stderr)
@@ -134,6 +136,10 @@ def main():
         print("[py] без диаризации (токен не передан)", file=sys.stderr)
 
     segments = group_segments(words, turns)
+    if args.time_offset:
+        for s in segments:
+            s["start"] += args.time_offset
+            s["end"] += args.time_offset
     base = os.path.splitext(os.path.basename(args.audio))[0]
     write_outputs(args.out, base, segments)
     print(f"[py] готово: {len(segments)} сегментов -> {args.out}/{base}.{{txt,srt,json}}",
