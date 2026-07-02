@@ -29,14 +29,20 @@ def fmt_ts(t: float) -> str:
 
 
 def transcribe(audio, model, language, threads):
+    """Возвращает (words, native): слова с таймкодами/уверенностью и нативные
+    сегменты-фразы whisper (их границы нужны, чтобы в plain-режиме не схлопывать
+    транскрипт в один блок)."""
     from faster_whisper import WhisperModel
     wm = WhisperModel(model, device="cpu", compute_type="int8", cpu_threads=threads)
     segs, _ = wm.transcribe(audio, language=language, word_timestamps=True, beam_size=5)
-    words = []   # плоский список слов: (start, end, text)
+    words = []    # плоский список слов: (start, end, text, probability)
+    native = []   # нативные фразы whisper: {start, end, text}
     for s in segs:
+        native.append({"start": float(s.start), "end": float(s.end),
+                        "text": s.text.strip(), "speaker": None})
         for w in (s.words or []):
-            words.append((float(w.start), float(w.end), w.word))
-    return words
+            words.append((float(w.start), float(w.end), w.word, float(w.probability)))
+    return words, native
 
 
 def diarize(audio, token):
@@ -76,7 +82,7 @@ def group_segments(words, turns):
     """Группируем подряд идущие слова одного спикера в сегменты."""
     segments = []
     cur = None
-    for ws, we, wt in words:
+    for ws, we, wt, _wp in words:
         sp = speaker_for(ws, we, turns) if turns else None
         if cur and cur["speaker"] == sp:
             cur["end"] = we
@@ -90,6 +96,24 @@ def group_segments(words, turns):
     for s in segments:
         s["text"] = s["text"].strip()
     return segments
+
+
+def write_words(out_dir, base, words, language):
+    """Пословный тайминг — источник истины (для frame_windows.py и будущего редактора
+    транскрипции). i — стабильный id слова, prob — уверенность распознавания."""
+    os.makedirs(out_dir, exist_ok=True)
+    data = {
+        "schema_version": 1,
+        "audio": base + ".wav",
+        "language": language,
+        "words": [
+            {"i": i, "start": round(s, 3), "end": round(e, 3),
+             "word": w, "prob": round(p, 4)}
+            for i, (s, e, w, p) in enumerate(words)
+        ],
+    }
+    with open(os.path.join(out_dir, base + ".words.json"), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def write_outputs(out_dir, base, segments):
@@ -123,8 +147,9 @@ def main():
     args = ap.parse_args()
 
     print(f"[py] транскрипция (faster-whisper {args.model})...", file=sys.stderr)
-    words = transcribe(args.audio, args.model, args.language, args.threads)
-    print(f"[py] слов с таймкодами: {len(words)}", file=sys.stderr)
+    words, native = transcribe(args.audio, args.model, args.language, args.threads)
+    print(f"[py] слов с таймкодами: {len(words)}, нативных фраз: {len(native)}",
+          file=sys.stderr)
 
     turns = []
     if args.hf_token:
@@ -135,15 +160,25 @@ def main():
     else:
         print("[py] без диаризации (токен не передан)", file=sys.stderr)
 
-    segments = group_segments(words, turns)
+    # С диаризацией — склейка слов по спикеру; без неё — НЕ схлопываем в один блок,
+    # а сохраняем нативные фразы whisper (границы предложений/дыханий ~2.5с).
+    if turns:
+        segments = group_segments(words, turns)
+    else:
+        segments = native
+
     if args.time_offset:
         for s in segments:
             s["start"] += args.time_offset
             s["end"] += args.time_offset
+        words = [(s + args.time_offset, e + args.time_offset, w, p)
+                 for (s, e, w, p) in words]
+
     base = os.path.splitext(os.path.basename(args.audio))[0]
+    write_words(args.out, base, words, args.language)
     write_outputs(args.out, base, segments)
-    print(f"[py] готово: {len(segments)} сегментов -> {args.out}/{base}.{{txt,srt,json}}",
-          file=sys.stderr)
+    print(f"[py] готово: {len(segments)} сегментов, {len(words)} слов -> "
+          f"{args.out}/{base}.{{txt,srt,json,words.json}}", file=sys.stderr)
 
 
 if __name__ == "__main__":
