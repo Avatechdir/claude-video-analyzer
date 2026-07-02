@@ -21,7 +21,10 @@ set -euo pipefail
 
 VIDEO="${1:?нужен путь к видео}"
 WORK="${2:?нужен рабочий каталог}"
-MAX_FRAMES="${MAX_FRAMES:-80}"
+MAX_FRAMES="${MAX_FRAMES:-80}"          # финальный бюджет (после дедупа/скринера) — см. SKILL.md
+EXTRACT_MAX="${EXTRACT_MAX:-300}"        # ЩЕДРЫЙ потолок извлечения: планировщик даёт много
+                                         # кандидатов (midpoint по показам), суть/дубли режут
+                                         # дальше dedup_frames.py + субагент-скринер, не тут.
 MIN_FRAMES="${MIN_FRAMES:-3}"
 ANALYZE_THRESH="${ANALYZE_THRESH:-0.1}"  # низкий порог сцен: ловим и плавные переходы слайдов
 MAX_GAP_SEC="${MAX_GAP_SEC:-45}"         # «дыра» без смен сцены длиннее → нужен добор
@@ -30,6 +33,7 @@ SILENCE_NOISE="${SILENCE_NOISE:--30dB}"  # порог тишины для silenc
 SILENCE_MIN="${SILENCE_MIN:-2}"          # мин. длительность тишины (сек)
 SPEECH_RATIO="${SPEECH_RATIO:-0.3}"      # дыра = «тишина+статика», если речи меньше этой доли
 MIN_GAP="${MIN_GAP:-1.5}"                # кадры ближе этого по времени считаем дублем
+MIN_SEG="${MIN_SEG:-0.7}"                # отрезок между склейками короче — переход, пропускаем
 
 # Формат кадров. jpg (по умолчанию) — компактно, годится для «говорящих голов». png —
 # БЕЗ ПОТЕРЬ: для демо/скринкастов/слайдов, где важно читать мелкий текст UI (jpeg его «мылит»).
@@ -103,7 +107,7 @@ extract_at() {
   # исчерпался бы дублями в начале и хвост видео остался бы без кадров.
   ffmpeg -y ${SEEK_ARGS[@]+"${SEEK_ARGS[@]}"} -i "$VIDEO" \
     -vf "select='${expr}',showinfo,scale='min(1280,iw)':-2" \
-    -vsync vfr -frames:v "$(( MAX_FRAMES * 3 + 10 ))" ${ENC_ARGS[@]+"${ENC_ARGS[@]}"} \
+    -vsync vfr -frames:v "$(( EXTRACT_MAX * 3 + 10 ))" ${ENC_ARGS[@]+"${ENC_ARGS[@]}"} \
     "$FRAMES/frame_%04d.$EXT" 2>"$log" || true
   # Сырые таймкоды окна (относительные), по строке на кадр в порядке вывода (= frame_0001..).
   grep -oE 'pts_time:[0-9.]+' "$log" 2>/dev/null | sed 's/pts_time://' > "$FRAMES/_rawpts.txt" || true
@@ -158,12 +162,12 @@ if [ "$DUR" -gt 0 ]; then
   n_sil=$(wc -l < "$SIL" | tr -d ' ')
 
   # 3) План таймкодов из анализа.
-  awk -v DUR="$DUR" -v MAXF="$MAX_FRAMES" -v MAXGAP="$MAX_GAP_SEC" -v STEP="$INFILL_STEP" \
+  awk -v DUR="$DUR" -v MAXF="$EXTRACT_MAX" -v MAXGAP="$MAX_GAP_SEC" -v STEP="$INFILL_STEP" \
       -v MINF="$MIN_FRAMES" -v MINGAP="$MIN_GAP" -v SPEECH_RATIO="$SPEECH_RATIO" \
-      -v SCENES="$SCENES" -v SILENCE="$SIL" \
+      -v MIN_SEG="$MIN_SEG" -v SCENES="$SCENES" -v SILENCE="$SIL" \
       -f "$SCRIPT_DIR/plan_frames.awk" > "$PLAN" || true
   n_plan=$(wc -l < "$PLAN" | tr -d ' ')
-  echo "[plan] сцен=$n_scenes, интервалов тишины=$n_sil → кадров в плане=$n_plan (лимит $MAX_FRAMES)" >&2
+  echo "[plan] сцен=$n_scenes, интервалов тишины=$n_sil → кадров в плане=$n_plan (потолок извлечения $EXTRACT_MAX)" >&2
 else
   echo "[analyze] длительность неизвестна — равномерный план" >&2
   n_scenes=0; n_sil=0
@@ -180,7 +184,7 @@ if [ "$count" -lt "$MIN_FRAMES" ]; then
   echo "[extract] кадров мало ($count) — равномерная подстраховка" >&2
   rm -f "$FRAMES"/frame_*."$EXT"
   N=$(( DUR / 10 )); [ "$N" -lt "$MIN_FRAMES" ] && N=$MIN_FRAMES
-  [ "$N" -gt "$MAX_FRAMES" ] && N=$MAX_FRAMES
+  [ "$N" -gt "$EXTRACT_MAX" ] && N=$EXTRACT_MAX
   uniform_plan "$N" "$PLAN"
   extract_at "$PLAN"
   count="$(find "$FRAMES" -name "frame_*.$EXT" | wc -l | tr -d ' ')"
