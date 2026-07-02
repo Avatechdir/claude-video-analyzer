@@ -60,6 +60,15 @@ else
   python -m pip install whisperx
 fi
 
+# Pillow — нужен для отбора кадров (dedup_frames.py / contact_sheets.py).
+# Обычно приходит транзитивно, но фиксируем явно, чтобы не зависеть от чужих зависимостей.
+if python -c "import PIL" 2>/dev/null; then
+  echo "    [ok] Pillow уже установлен в venv"
+else
+  echo "    [..] pip install pillow"
+  python -m pip install --quiet pillow
+fi
+
 # Фикс совместимости whisperx/pyannote с torch>=2.6 (weights_only).
 # Кладём sitecustomize.py в site-packages — Python подхватит его при старте.
 SP="$(python -c 'import site,sys; print(next(p for p in site.getsitepackages() if p.endswith("site-packages")))' 2>/dev/null || true)"
