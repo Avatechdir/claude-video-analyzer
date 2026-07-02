@@ -28,13 +28,15 @@ def fmt_ts(t: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def transcribe(audio, model, language, threads):
+def transcribe(audio, model, language, threads, initial_prompt=""):
     """Возвращает (words, native): слова с таймкодами/уверенностью и нативные
     сегменты-фразы whisper (их границы нужны, чтобы в plain-режиме не схлопывать
-    транскрипт в один блок)."""
+    транскрипт в один блок). initial_prompt — подсказка-глоссарий (термины,
+    имена, жаргон): whisper заметно точнее пишет названия из подсказки."""
     from faster_whisper import WhisperModel
     wm = WhisperModel(model, device="cpu", compute_type="int8", cpu_threads=threads)
-    segs, _ = wm.transcribe(audio, language=language, word_timestamps=True, beam_size=5)
+    segs, _ = wm.transcribe(audio, language=language, word_timestamps=True, beam_size=5,
+                            initial_prompt=initial_prompt or None)
     words = []    # плоский список слов: (start, end, text, probability)
     native = []   # нативные фразы whisper: {start, end, text}
     for s in segs:
@@ -144,10 +146,13 @@ def main():
     ap.add_argument("--hf-token", default="")
     ap.add_argument("--time-offset", type=float, default=0.0,
                     help="прибавить к таймкодам (фокус-режим: старт окна в сек)")
+    ap.add_argument("--initial-prompt", default="",
+                    help="подсказка whisper: словарь терминов/имён (глоссарий)")
     args = ap.parse_args()
 
     print(f"[py] транскрипция (faster-whisper {args.model})...", file=sys.stderr)
-    words, native = transcribe(args.audio, args.model, args.language, args.threads)
+    words, native = transcribe(args.audio, args.model, args.language, args.threads,
+                               args.initial_prompt)
     print(f"[py] слов с таймкодами: {len(words)}, нативных фраз: {len(native)}",
           file=sys.stderr)
 

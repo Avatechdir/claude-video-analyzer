@@ -2,7 +2,9 @@
 # transcribe.sh — транскрибирует аудио (faster-whisper) + опц. диаризация (pyannote).
 # Usage: transcribe.sh <audio.wav> <workdir> [diarize|plain] [language]
 # Результат в $WORK: <base>.srt / <base>.txt / <base>.json (+ метки SPEAKER_xx при diarize)
-# Env (опц.): WHISPER_MODEL (large-v3-turbo), WHISPER_THREADS (4)
+# Env (опц.): WHISPER_MODEL (large-v3-turbo), WHISPER_THREADS (4),
+#             WHISPER_PROMPT (готовая подсказка-глоссарий для whisper) либо
+#             GLOSSARY_JSON (путь к glossary.json Transcript Editor — термины извлекутся сами)
 set -euo pipefail
 
 AUDIO="${1:?нужен путь к audio.wav}"
@@ -39,6 +41,23 @@ if [ -f "$WORK/focus_offset" ]; then
     echo "[transcribe] фокус-режим: сдвиг таймкодов на +${OFFSET}с (абсолютное время)" >&2
     ARGS+=(--time-offset "$OFFSET")
   fi
+fi
+
+# Глоссарий → initial_prompt: whisper точнее пишет названия/жаргон из подсказки.
+# WHISPER_PROMPT — готовый текст; иначе GLOSSARY_JSON — glossary.json редактора.
+PROMPT="${WHISPER_PROMPT:-}"
+if [ -z "$PROMPT" ] && [ -n "${GLOSSARY_JSON:-}" ] && [ -f "$GLOSSARY_JSON" ]; then
+  PROMPT="$(python - "$GLOSSARY_JSON" <<'PY'
+import json, sys
+terms = [t.get("term", "") for t in json.load(open(sys.argv[1])).get("terms", [])
+         if t.get("term")]
+print(("Словарь терминов: " + ", ".join(terms) + ".") if terms else "", end="")
+PY
+)"
+fi
+if [ -n "$PROMPT" ]; then
+  echo "[transcribe] глоссарий-подсказка whisper: $PROMPT" >&2
+  ARGS+=(--initial-prompt "$PROMPT")
 fi
 
 if [ "$MODE" = "diarize" ]; then
