@@ -196,9 +196,13 @@ bash "$SKILL_DIR/scripts/make_report.sh" "$OUTDIR/report.md" "$OUTDIR/assets" "$
 ### 7c. Предложить импорт в Transcript Editor (если он установлен)
 Если рядом с проектами есть Transcript Editor (веб-редактор транскрипта: клик по слову → видео,
 правка слов/спикеров, глоссарий) — **предложи** пользователю импортировать разбор (не делай молча).
-**Строго ДО шага 8**: импортёр копирует `audio.words.json`/`audio.json` из `$WORK`.
+**Строго ДО шага 8**: импортёр копирует `audio.words.json`/`audio.json` и кадры
+(`frames/` + `timestamps.txt`) из `$WORK`. **Обязательно `--copy`**, если видео лежит в
+`$WORK` (обычный случай для YouTube): без него h264-видео попадает в проект СИМЛИНКОМ на
+временную папку и умирает при очистке шага 8. Проверь вывод: должна быть строка
+`[import] кадров: N` — если её нет, кадры в проект не попали.
 ```bash
-python <transcript-editor>/server/importer.py --video "$VIDEO" --analysis "$WORK" --title "<название>"
+python <transcript-editor>/server/importer.py --copy --video "$VIDEO" --analysis "$WORK" --title "<название>"
 ```
 
 ### 8. Очистка
