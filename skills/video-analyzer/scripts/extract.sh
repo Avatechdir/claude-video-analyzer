@@ -90,47 +90,32 @@ echo "$OFFSET" > "$WORK/focus_offset"
 echo "[extract] аудио → audio.wav (16kHz mono)" >&2
 ffmpeg -y ${SEEK_ARGS[@]+"${SEEK_ARGS[@]}"} -i "$VIDEO" -vn -ar 16000 -ac 1 "$WORK/audio.wav" 2>/dev/null
 
-# Извлечь кадры по списку таймкодов (один проход). Аргумент — файл с таймкодами окна
-# (относительными). Пишет $FRAMES/frame_XXXX.jpg и $FRAMES/timestamps.txt (АБСОЛЮТНЫЕ).
+# Извлечь кадры по списку таймкодов — точечным seek'ом на каждый. Аргумент — файл с
+# таймкодами окна (относительными). Пишет $FRAMES/frame_XXXX.jpg и timestamps.txt (АБСОЛЮТНЫЕ).
+# Раньше был один проход с фильтром select='between(...)+between(...)+…', но ffmpeg 8.1.x
+# падает на инициализации длинного фильтрографа (Error initializing filters / Cannot allocate
+# memory при ~100+ between) и кадры не извлекаются вовсе. Keyframe-seek быстрый: ~100 сик'ов
+# дешевле одного полного декода часового видео. Дедуп соседей не нужен: одна цель = ровно
+# один кадр (план уже дедуплен по MIN_GAP).
 extract_at() {
   local plan="$1"
-  local log="$FRAMES/ffmpeg.log"
-  # eps = ~0.6 кадра, чтобы select поймал ближайший кадр к каждой цели
-  local fps eps expr
-  fps="$(ffprobe -v quiet -select_streams v -show_entries stream=avg_frame_rate -of csv=p=0 "$VIDEO" 2>/dev/null)"
-  eps="$(awk -v r="$fps" 'BEGIN{n=split(r,a,"/"); f=(n==2&&a[2]!=0)?a[1]/a[2]:(r+0); if(f<=0)f=25; e=0.6/f; if(e<0.02)e=0.02; printf "%.4f", e}')"
-  expr="$(awk -v e="$eps" '{lo=$1-e; if(lo<0)lo=0; if(NR>1)printf "+"; printf "between(t,%.3f,%.3f)", lo, $1+e}' "$plan")"
-  [ -z "$expr" ] && { : > "$FRAMES/timestamps.txt"; return; }
-  # select по времени; запятые внутри between() требуют одинарных кавычек в фильтрографе.
-  # Окно between() шириной ~кадр может поймать 2–3 СОСЕДНИХ кадра на одну цель (особенно на
-  # 60fps). Поэтому даём запас по лимиту (×3), а дубли убираем дедупом ниже — иначе -frames:v
-  # исчерпался бы дублями в начале и хвост видео остался бы без кадров.
-  ffmpeg -y ${SEEK_ARGS[@]+"${SEEK_ARGS[@]}"} -i "$VIDEO" \
-    -vf "select='${expr}',showinfo,scale='min(1280,iw)':-2" \
-    -vsync vfr -frames:v "$(( EXTRACT_MAX * 3 + 10 ))" ${ENC_ARGS[@]+"${ENC_ARGS[@]}"} \
-    "$FRAMES/frame_%04d.$EXT" 2>"$log" || true
-  # Сырые таймкоды окна (относительные), по строке на кадр в порядке вывода (= frame_0001..).
-  grep -oE 'pts_time:[0-9.]+' "$log" 2>/dev/null | sed 's/pts_time://' > "$FRAMES/_rawpts.txt" || true
-  rm -f "$log"
-  # Дедуп соседних дублей: оставляем кадр, если он дальше DEDUP_GAP от прошлого оставленного.
-  # На выходе _keep.txt: "исходный_номер_кадра  абсолютный_таймкод".
-  local dedup="${DEDUP_GAP:-0.5}"
-  awk -v g="$dedup" -v off="$OFFSET" 'BEGIN{last=-1e9}
-    { if($1-last>=g){last=$1; printf "%d %.3f\n", NR, $1+off} }' "$FRAMES/_rawpts.txt" > "$FRAMES/_keep.txt" || true
-  # Переносим оставленные кадры в непрерывную нумерацию и пишем timestamps.txt.
   : > "$FRAMES/timestamps.txt"
-  local i=0 idx pts src dst
-  while read -r idx pts; do
-    [ -n "$idx" ] || continue
-    i=$(( i + 1 ))
-    src="$(printf '%s/frame_%04d.%s' "$FRAMES" "$idx" "$EXT")"
-    dst="$(printf '%s/kept_%04d.%s' "$FRAMES" "$i" "$EXT")"
-    mv -f "$src" "$dst" 2>/dev/null || true
-    printf '%s\n' "$pts" >> "$FRAMES/timestamps.txt"
-  done < "$FRAMES/_keep.txt"
-  rm -f "$FRAMES"/frame_*."$EXT"
-  for f in "$FRAMES"/kept_*."$EXT"; do [ -e "$f" ] || continue; mv -f "$f" "${f/kept_/frame_}"; done
-  rm -f "$FRAMES/_rawpts.txt" "$FRAMES/_keep.txt"
+  local i=0 t abs out
+  while read -r t; do
+    [ -n "$t" ] || continue
+    abs="$(awk -v t="$t" -v off="$OFFSET" 'BEGIN{printf "%.3f", t+off}')"
+    out="$(printf '%s/frame_%04d.%s' "$FRAMES" "$(( i + 1 ))" "$EXT")"
+    # -nostdin обязателен: иначе ffmpeg съест stdin цикла (сам plan-файл).
+    ffmpeg -y -nostdin -ss "$abs" -i "$VIDEO" -frames:v 1 \
+      -vf "scale='min(1280,iw)':-2" ${ENC_ARGS[@]+"${ENC_ARGS[@]}"} \
+      "$out" 2>/dev/null || true
+    if [ -s "$out" ]; then
+      i=$(( i + 1 ))
+      printf '%s\n' "$abs" >> "$FRAMES/timestamps.txt"
+    else
+      rm -f "$out"
+    fi
+  done < "$plan"
 }
 
 # Равномерный запасной план (длительность неизвестна или анализ ничего не дал).
