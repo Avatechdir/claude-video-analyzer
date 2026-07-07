@@ -15,6 +15,8 @@
 #   SILENCE_NOISE (-30dB), SILENCE_MIN (2), SPEECH_RATIO (0.3), MIN_GAP (1.5)
 #   FRAME_FORMAT (jpg|png, по умолч. jpg): png — без потерь, для демо/слайдов с мелким
 #     текстом UI; jpg — компактно, для «говорящих голов».
+#   FRAME_MAX_WIDTH (1920): макс. ширина кадра, px. Дефолт = нативный 1080p (резко
+#     на полном экране). Не апскейлит выше исходника. Для 4K можно 2560/3840.
 #   Фокус-режим: FOCUS_START / FOCUS_END (SS | MM:SS | HH:MM:SS) — разбирать только отрезок.
 #   Кадры и аудио режутся по окну (плотность считается от длины окна), таймкоды АБСОЛЮТНЫЕ.
 set -euo pipefail
@@ -45,6 +47,10 @@ case "$FRAME_FORMAT" in
   png)      EXT="png"; ENC_ARGS=(-pred mixed) ;;           # png без потерь (фильтр предсказания)
   *) echo "ОШИБКА: FRAME_FORMAT должен быть jpg или png (дано: $FRAME_FORMAT)" >&2; exit 1 ;;
 esac
+# Макс. ширина кадра (px). Дефолт 1920 = нативный 1080p → резкий текст UI на
+# полном экране/в лайтбоксе. min(...,iw) НЕ апскейлит выше исходника. Для 4K-демо
+# со мелким текстом можно поднять (2560/3840) ценой веса файлов/PDF/токенов.
+FRAME_MAX_WIDTH="${FRAME_MAX_WIDTH:-1920}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMES="$WORK/frames"
@@ -107,7 +113,7 @@ extract_at() {
     out="$(printf '%s/frame_%04d.%s' "$FRAMES" "$(( i + 1 ))" "$EXT")"
     # -nostdin обязателен: иначе ffmpeg съест stdin цикла (сам plan-файл).
     ffmpeg -y -nostdin -ss "$abs" -i "$VIDEO" -frames:v 1 \
-      -vf "scale='min(1280,iw)':-2" ${ENC_ARGS[@]+"${ENC_ARGS[@]}"} \
+      -vf "scale='min(${FRAME_MAX_WIDTH},iw)':-2" ${ENC_ARGS[@]+"${ENC_ARGS[@]}"} \
       "$out" 2>/dev/null || true
     if [ -s "$out" ]; then
       i=$(( i + 1 ))
