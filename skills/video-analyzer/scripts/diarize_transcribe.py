@@ -30,9 +30,11 @@ def fmt_ts(t: float) -> str:
 
 def transcribe(audio, model, language, threads, initial_prompt=""):
     """Возвращает (words, native): слова с таймкодами/уверенностью и нативные
-    сегменты-фразы whisper (их границы нужны, чтобы в plain-режиме не схлопывать
-    транскрипт в один блок). initial_prompt — подсказка-глоссарий (термины,
-    имена, жаргон): whisper заметно точнее пишет названия из подсказки."""
+    сегменты-фразы whisper. Границы фраз нужны, чтобы не схлопывать транскрипт
+    в один блок: в plain-режиме фразы идут в вывод как есть, в diarize по ним
+    режутся длинные реплики одного спикера (см. group_segments).
+    initial_prompt — подсказка-глоссарий (термины, имена, жаргон): whisper
+    заметно точнее пишет названия из подсказки."""
     from faster_whisper import WhisperModel
     wm = WhisperModel(model, device="cpu", compute_type="int8", cpu_threads=threads)
     segs, _ = wm.transcribe(audio, language=language, word_timestamps=True, beam_size=5,
@@ -80,13 +82,30 @@ def speaker_for(w_start, w_end, turns):
     return nearest
 
 
-def group_segments(words, turns):
-    """Группируем подряд идущие слова одного спикера в сегменты."""
+def group_segments(words, turns, phrase_ends=None, max_seg_sec=45.0):
+    """Группируем подряд идущие слова одного спикера в сегменты-реплики.
+
+    Реплика длиннее max_seg_sec дополнительно режется по границам нативных
+    фраз whisper: без этого монолог (доклад, вебинар) схлопывается в одну
+    глыбу на десятки минут — plain-режим от этого защищён нативными фразами,
+    а склейка по спикеру не была. Резать можно только на стыке фраз, чтобы
+    не рвать предложение посередине. max_seg_sec=0 — старое поведение
+    (сегмент = вся реплика без ограничения длины)."""
+    import bisect
+    ends = sorted(phrase_ends or [])
     segments = []
     cur = None
     for ws, we, wt, _wp in words:
         sp = speaker_for(ws, we, turns) if turns else None
-        if cur and cur["speaker"] == sp:
+        same = cur is not None and cur["speaker"] == sp
+        if same and max_seg_sec and ends and (cur["end"] - cur["start"]) >= max_seg_sec:
+            # слово открывает новую нативную фразу, если между концом
+            # предыдущего слова и началом этого есть граница (допуск 50 мс)
+            lo = bisect.bisect_right(ends, cur["end"] - 0.05)
+            hi = bisect.bisect_right(ends, ws + 0.05)
+            if hi > lo:
+                same = False
+        if same:
             cur["end"] = we
             cur["text"] += wt
         else:
@@ -148,6 +167,9 @@ def main():
                     help="прибавить к таймкодам (фокус-режим: старт окна в сек)")
     ap.add_argument("--initial-prompt", default="",
                     help="подсказка whisper: словарь терминов/имён (глоссарий)")
+    ap.add_argument("--max-seg-sec", type=float, default=45.0,
+                    help="резать реплику одного спикера по границам фраз whisper, "
+                         "когда она длиннее N сек (0 = не резать)")
     args = ap.parse_args()
 
     print(f"[py] транскрипция (faster-whisper {args.model})...", file=sys.stderr)
@@ -165,10 +187,13 @@ def main():
     else:
         print("[py] без диаризации (токен не передан)", file=sys.stderr)
 
-    # С диаризацией — склейка слов по спикеру; без неё — НЕ схлопываем в один блок,
-    # а сохраняем нативные фразы whisper (границы предложений/дыханий ~2.5с).
+    # С диаризацией — склейка слов по спикеру (длинные реплики режутся по
+    # границам нативных фраз, см. group_segments); без неё — НЕ схлопываем
+    # в один блок, а сохраняем нативные фразы whisper (~2.5с).
     if turns:
-        segments = group_segments(words, turns)
+        segments = group_segments(words, turns,
+                                  phrase_ends=[n["end"] for n in native],
+                                  max_seg_sec=args.max_seg_sec)
     else:
         segments = native
 
